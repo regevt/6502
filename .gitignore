@@ -1,0 +1,11 @@
+# Generated files
+*.o
+*.bin
+*.dbg
+venv
+boot/generated/rom_defs.s
+
+# Project files
+.idea
+
+.DS_Store

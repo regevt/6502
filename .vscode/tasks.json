@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "make build && make clean.build",
+      "problemMatcher": []
+    },
+    {
+      "label": "build and flash",
+      "type": "shell",
+      "command": "make flashrom && make clean.build",
+      "problemMatcher": []
+    },
+    {
+      "label": "build program",
+      "type": "shell",
+      "command": "make build && make run.python && make clean",
+      "problemMatcher": []
+    },
+    {
+      "label": "clean",
+      "type": "shell",
+      "command": "make clean",
+      "problemMatcher": []
+    }
+  ]
+}
