@@ -1,11 +1,12 @@
 .setcpu "65C02"
-; Boot ROM for 6502 computer. Provides shell which can access test programs.
+        ; Boot ROM for 6502 computer. Provides shell which can access test programs.
 
 .include "hardware/speaker.s"
 .include "hardware/acia.s"
 .include "hardware/via.s"
+.include "hardware/keyboard.s"
 
-; .include "hardware/vga.s"
+        ; .include "hardware/vga.s"
 
 .segment "BSS"
 shell_cmd_id: .res 1
@@ -36,40 +37,55 @@ PORT_INPUT  = %00000000
 PORT_OUTPUT = %11111111
 
 RESET:
-    ; Configure VIA CA1 interrupt on positive edge
-    LDA #%00000001   ; CA1 positive edge
-    STA VIA_PCR
+                ; Configure VIA CA1 interrupt on positive edge
+                LDA #%00000001   ; CA1 positive edge
+                STA VIA_PCR
 
-    ; enable CA1 interrupt (write with bit7=1 to set bits)
-    ; bit7=1 (set), bit1=1 (CA1 interrupt enable) --> %10000010
-    LDA #%10000010
-    STA VIA_IER
+                ; enable interrupt
+                LDA #%10000010
+                ; lda #$c2                     ; IRQ ON, T1 ON, CA1 ON
+                STA VIA_IER
 
-    ; Port directions
-    LDA #PORT_OUTPUT
-    STA VIA_DDRB          ; Port B = outputs (control lines / OEs)
-    LDA #PORT_OUTPUT
-    STA VIA_DDRA          ; Default Port A = outputs (VGA data)
+                ; Port directions
+                LDA #PORT_OUTPUT
+                STA VIA_DDRB          ; Port B = outputs (control lines / OEs)
+                LDA #PORT_OUTPUT
+                STA VIA_DDRA          ; Default Port A = outputs (VGA data)
 
-    ; Ensure both shared-bus devices are disabled initially (avoid contention)
-    LDA #0
-    STA VIA_PORTB
-    STA VIA_PORTA
+                ; Ensure both shared-bus devices are disabled initially (avoid contention)
+                LDA #0
+                STA VIA_PORTB
+                STA VIA_PORTA
 
-    lda #$00
-    sta kb_flags
-    sta kb_wptr
-    sta kb_rptr
+                ; lda #$C0 				   ; Timer 1 in continuous mode, PB7 output
+                ; STA VIA_ACR
+                ; lda #$0
+                ; STA VIA_T1C_L
+                ; lda #$3c
+                ; STA VIA_T1C_H
 
-    ; globally enable interrupts on the CPU
-    CLI
+                LDA #$00
+                STA kb_flags
+                STA kb_wptr
+                STA kb_rptr
 
-    LDA     #$1F            ; 8-N-1, 19200 baud.
-    STA     ACIA_CONTROL
-    LDA     #$0B            ; No parity, no echo, no interrupts.
-    STA     ACIA_COMMAND
-    LDA     #$1B            ; Begin with escape.
+                ; globally enable interrupts on the CPU
+                CLI
 
+                LDA     #$1F            ; 8-N-1, 19200 baud.
+                STA     ACIA_CONTROL
+                LDA     #$0B            ; No parity, no echo, no interrupts.
+                STA     ACIA_COMMAND
+                LDA     #$1B            ; Begin with escape.
+
+                JMP     NOTCR
+
+KEYBOARD_INPUT:
+                LDX     kb_rptr
+                LDA     kb_buffer, X
+                STA     IN, Y
+                INC     kb_rptr
+                JMP     NEXTCHAR_COTINUE
 NOTCR:
                 CMP     #$08           ; Backspace key?
                 BEQ     BACKSPACE      ; Yes.
@@ -89,17 +105,22 @@ GETLINE:
                 LDY     #$01           ; Initialize text index.
 BACKSPACE:      DEY                    ; Back up text index.
                 BMI     GETLINE        ; Beyond start of line, reinitialize.
-
+                
 NEXTCHAR:
+                SEI
+                LDA     kb_rptr
+                CMP     kb_wptr
+                CLI
+                BNE     KEYBOARD_INPUT
                 LDA     ACIA_STATUS    ; Check status.
                 AND     #$08           ; Key ready?
                 BEQ     NEXTCHAR       ; Loop until ready.
                 LDA     ACIA_DATA      ; Load character. B7 will be '0'.
-                STA     IN,Y           ; Add to text buffer.
+                STA     IN, Y
+NEXTCHAR_COTINUE:
                 JSR     ECHO           ; Display character.
                 CMP     #$0D           ; CR?
                 BNE     NOTCR          ; No.
-
                 LDY     #$FF           ; Reset text index.
                 LDA     #$00           ; For XAM mode.
                 TAX                    ; X=0.
@@ -251,18 +272,34 @@ PRINT_TO_SCREEN:
     RTS
 
 irq:
-    pha
-    txa
-    pha
-    tya
-    pha
+        pha
+        txa
+        pha
+        tya
+        pha
+
+;         LDA VIA_IFR
+;         and #$40                     ; Timer 1 interrupt flag (bit 6)
+;         BEQ check_ca1
+;         lda #%01000000               ; disable T1 interrupt in VIA_IER
+;         STA VIA_IER                  ; clear CA1 interrupt enable
+
+;         lda #$0
+;         STA VIA_T1C_L
+;         lda #$3c
+;         STA VIA_T1C_H
+
+; check_ca1:
+;         LDA VIA_IFR
+;         and #$02                     ; CA1 interrupt flag (bit 1)
+;         BNE irq_done
 
     ; ----- disable CA1 interrupt in VIA_IER -----
     ; write IER with bit7 = 0 to clear the bit(s).
     ; CA1 bit is bit1 => %00000010
     LDA #%00000010
     STA VIA_IER       ; clear CA1 interrupt enable
-    
+  
     ; LDA #PORT_OUTPUT
     ; STA VIA_DDRA
 
@@ -280,25 +317,32 @@ irq:
     LDA #0
     STA VIA_PORTB
 
+; irq_done:
     ; ----- acknowledge/read IFR so VIA clears internal flags -----
     LDA VIA_IFR
-    
+
+	LDA #1
+	STA IS_FROM_IRQ
+
     ; ; ----- re-enable CA1 interrupt -----
+    ; LDA #$C2                     ; IRQ ON, T1 ON, CA1 ON
     LDA #%10000010
     STA VIA_IER       ; set CA1 interrupt enable (bit7=1 => set)
 
-    ; restore registers
-    pla
-    tay
-    pla
-    tax
-    pla
-    RTI
+        ; restore registers
+        pla
+        tay
+        pla
+        tax
+        pla
+        RTI
 
 nmi:
-    RTI
+        RTI
 
-.include "hardware/keyboard.s"
+; .include "hardware/keyboard.s"
+    ; .include "../programs/SID_Test.s"
+    ; .include "../programs/MontyOnTheRun.s"
 
 .segment "VECTORS"
     .word   nmi             ; NMI vector

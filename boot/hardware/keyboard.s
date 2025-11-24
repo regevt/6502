@@ -6,10 +6,13 @@ RELEASE   = %00000001
 SHIFT     = %00000010
 EXC_KEY   = %00000100
 
-kb_buffer = $0200  ; 256-byte kb buffer 0200-02ff
+kb_buffer = $0100  ; 256-byte kb buffer 0200-02ff
 
 ; IRQ vector points here
 keyboard_interrupt:
+  PHA
+  TXA
+  PHA
   lda kb_flags
   and #RELEASE   ; check if we're releasing a key
   beq read_key   ; otherwise, read the key
@@ -25,9 +28,11 @@ keyboard_interrupt:
   cmp #$59       ; right shift
   beq shift_up
 keyboard_interrupt_exit:
+  PLA
+  TAX
+  PLA
   RTS
   
-
 shift_up:
   lda kb_flags
   eor #SHIFT  ; flip the shift bit
@@ -36,6 +41,7 @@ shift_up:
   
 read_key:
   lda VIA_PORTA
+  tax
   cmp #$f0        ; if releasing a key
   beq key_release ; set the releasing bit
   cmp #$12        ; left shift
@@ -51,7 +57,7 @@ read_key:
   cmp #$72       ;  down arrow
   beq DOWN_ARROW
 
-  tax
+  ; tax
   lda kb_flags
   and #SHIFT
   bne shifted_key
@@ -125,10 +131,9 @@ pulls_vga:
 
 shifted_key:
   lda keymap_shifted, x   ; map to character code
-
 push_key:
   ldx kb_wptr
-  sta kb_buffer, x
+  sta kb_buffer, X
   inc kb_wptr
   jmp keyboard_interrupt_exit
 
@@ -143,7 +148,7 @@ keymap: ;0123456789ABCDEF
   .byte "?cxde43?? vftr5?" ; 20-2F
   .byte "?nbhgy6???mju78?" ; 30-3F
   .byte "?,kio09??./l;p-?" ; 40-4F
-  .byte "??'?[=????",$0a,"]?\??" ; 50-5F
+  .byte "??'?[=????",$0D,"]?\??" ; 50-5F
   .byte "?????????1?47???" ; 60-6F
   .byte "0.2568",$1b,"??+3-*9??" ; 70-7F
   .byte "????????????????" ; 80-8F

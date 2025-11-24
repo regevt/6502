@@ -10,5 +10,6 @@
   },
   "explorerExclude.backup": {},
   "idf.pythonInstallPath": "/opt/homebrew/opt/python@3.12/Frameworks/Python.framework/Versions/3.12/bin/python3",
-  "makefile.configureOnOpen": false
+  "makefile.configureOnOpen": false,
+  "C_Cpp.codeAnalysis.clangTidy.path": "/Users/regevtal/Documents/C64Tools/llvm-mos/bin/clang-tidy"
 }
